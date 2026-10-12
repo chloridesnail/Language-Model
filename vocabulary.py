@@ -1,33 +1,46 @@
 import numpy as np
 
 class Vocabulary:
-    def __init__(self, text):
-        self.words = text.split()
-        self.words.append("END")
+    def __init__(self, text: str):
+        self.chars = list(text)
 
         self.vocab = {}
-        for word in self.words: #creates a dictionary of all the words with unique ids
-            if word not in self.vocab:
-                self.vocab[word] = len(self.vocab)
+        for char in self.chars: #creates a dictionary of all the chars with unique ids
+            if char not in self.vocab:
+                self.vocab[char] = len(self.vocab)
 
         self.reverseVocab = {}
-        for word in self.vocab:
-            self.reverseVocab[self.vocab[word]] = word
+        for char in self.vocab:
+            self.reverseVocab[self.vocab[char]] = char
 
     def encode(self, text):
-        words = text.split()
+        chars = list(text)
         ids = []
-        for word in words:
-            ids.append(self.vocab[word])
+        for char in chars:
+            ids.append(self.vocab[char])
         return ids
 
     def decode(self, ids):
-        words = []
+        chars = []
         for token_id in ids:
-            words.append(self.reverseVocab[token_id])
-        return " ".join(words)
+            chars.append(self.reverseVocab[token_id])
+        return "".join(chars)
 
-    def one_hot(self, word):
+    def one_hot(self, char):
         vector = [0] * len(self.vocab)
-        vector[self.vocab[word]] = 1
+        vector[self.vocab[char]] = 1
         return np.array(vector)
+    
+    def one_hotv2(self, chars):
+        array = []
+        for char in chars:
+            vector = self.one_hot(char)
+            array.append(vector)
+        return np.concatenate(array)
+
+    def load(self, saved_vocab):
+        self.vocab = {}
+        self.reverseVocab = {}
+        for i, char in enumerate(saved_vocab):
+            self.vocab[char] = i
+            self.reverseVocab[i] = char

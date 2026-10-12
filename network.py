@@ -23,3 +23,9 @@ class Network:
     def update(self, learning_rate):
         for layer in self.layers:
             layer.update(learning_rate)
+
+    def load(self, save_data):
+        self.__init__(save_data["networkShape"])
+        for i, layer in enumerate(self.layers):
+            layer.weights = save_data[f"weights_{i}"]
+            layer.biases = save_data[f"biases_{i}"]

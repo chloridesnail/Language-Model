@@ -4,58 +4,91 @@ from layer import softmax
 from loss import cross_entropy
 import numpy as np
 
-with open("tinyshakespeare.txt", "r", encoding="utf-8") as file:
-    text = file.read()
-text = " ".join(text.split()[:500]) #only takes the first 500 words
-vocab = Vocabulary(text)
+epochs = 2000
+def train(network, vocab, current_epoch):
 
-print("Total words:", len(vocab.words))
-print("Unique tokens:", len(vocab.vocab))
+    training_octs = []
+    for i in range(len(vocab.chars) - 32): #creates char octs
+        oct = []
+        zero = []
+        for v in range(32):
+            zero.append(vocab.chars[i + v])
+        oct.append(zero)
+        oct.append(vocab.chars[i + 32])
+        training_octs.append(tuple(oct))
 
-size = len(vocab.vocab)
-network = Network([size, 8, size])
+    model_data = {}
+    model_data["networkShape"] = network.shape
+    model_data["epochs"] = current_epoch
+    model_data[f"vocabulary"] = []
 
-training_pairs = []
-for i in range(len(vocab.words) - 1): #creates word pairs
-    pair = (vocab.words[i], vocab.words[i+1])
-    training_pairs.append(pair)
+    for char in vocab.vocab:
+        model_data[f"vocabulary"].append(char)
 
-model_data = {}
-model_data["networkShape"] = network.shape
-model_data["epochs"] = 0
-model_data[f"vocabulary"] = []
+    for epoch in range(epochs):
+        total_loss = 0
+        for input_char, target_char in training_octs:
+            logits = network.forward(vocab.one_hotv2(input_char))
+            probabilities = softmax(logits)
 
-for word in vocab.vocab:
-    model_data[f"vocabulary"].append(word)
+            loss = cross_entropy(probabilities, vocab.vocab[target_char])
+            gradients = probabilities - vocab.one_hot(target_char)
 
-for epoch in range(500):
-    total_loss = 0
-    for input_word, target_word in training_pairs:
-        logits = network.forward(vocab.one_hot(input_word))
-        probabilities = softmax(logits)
+            network.backward(gradients)
+            network.update(0.01)
+            total_loss += loss
 
-        loss = cross_entropy(probabilities, vocab.vocab[target_word])
-        gradients = probabilities - vocab.one_hot(target_word)
+        model_data["epochs"] += 1
+        print(f">[{model_data['epochs']}] Average Loss: {total_loss / len(training_octs)}")
+        if model_data["epochs"] % 5 == 0: #checkpoints every 5 epochs
+            for i, layer in enumerate(network.layers):
+                model_data[f"weights_{i}"] = layer.weights
+                model_data[f"biases_{i}"] = layer.biases
+            np.savez("shakespeare_char_32ctx.npz", **model_data)
 
-        network.backward(gradients)
-        network.update(0.01)
-        total_loss += loss
+    for i, layer in enumerate(network.layers):
+        model_data[f"weights_{i}"] = layer.weights
+        model_data[f"biases_{i}"] = layer.biases
+    np.savez("shakespeare_char_32ctx.npz", **model_data)
 
-    model_data["epochs"] += 1
-    print(f">[{epoch}] Average Loss: {total_loss / len(training_pairs)}")
-    if model_data["epochs"] % 250 == 0: #checkpoints every 250 epochs
-        for i, layer in enumerate(network.layers):
-            model_data[f"weights_{i}"] = layer.weights
-            model_data[f"biases_{i}"] = layer.biases
-        np.savez("shakespeare.npz", **model_data)
+training_chars = 100000
+mode = "generate"
+if mode == "new":
+    with open("tinyshakespeare.txt", "r", encoding="utf-8") as file:
+        text = file.read()
+    text = "".join(list(text)[:training_chars])
+    vocab = Vocabulary(text)
+    network = Network([len(vocab.vocab) * 32, 64, len(vocab.vocab)])
+    train(network, vocab, 0)
+elif mode == "generate":
+    save_data = np.load("shakespeare_char_32ctx.npz")
+    network = Network(save_data["networkShape"])
+    vocab = Vocabulary("")
 
-word = "the"
-generated = [word]
-while word != "END" and len(generated) < 100:
-    logits = network.forward(vocab.one_hot(word))
+    network.load(save_data)
+    vocab.load(save_data["vocabulary"])
+elif mode == "resume":
+    with open("tinyshakespeare.txt", "r", encoding="utf-8") as file:
+        text = file.read()
+    text = "".join(list(text)[:training_chars])
+    save_data = np.load("shakespeare_char_32ctx.npz")
+
+    vocab = Vocabulary(text)
+    network = Network(save_data["networkShape"])
+    current_epoch = save_data["epochs"]
+    
+    network.load(save_data)
+    vocab.load(save_data["vocabulary"])
+    save_data.close()
+    train(network, vocab, current_epoch)   
+
+context = "First Citizen:\nBefore we proceed"
+generated = f"{context}"
+while len(generated) < 1000:
+    logits = network.forward(vocab.one_hotv2(context))
     probabilities = softmax(logits)
-    word = vocab.reverseVocab[np.random.choice(len(probabilities), p=probabilities)]
-        
-    if word == "END": break
-    generated.append(word)
-print(" ".join(generated)) 
+    next_char = vocab.reverseVocab[np.random.choice(len(probabilities), p=probabilities)]
+    context = f"{context[1:]}{next_char}"
+
+    generated = f"{generated}{next_char}"
+print(generated) 
